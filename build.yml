@@ -16,6 +16,5 @@ run:
   - |
     cd bosh-deployment-resource
     ./scripts/ci
-    ./scripts/add_dropbear
     tar -C . -czhf /tmp/build.tar.gz .
     tar -C ../docker-build-tmp -xzf /tmp/build.tar.gz

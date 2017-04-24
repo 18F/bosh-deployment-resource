@@ -8,8 +8,8 @@ require "tmpdir"
 require "stringio"
 
 describe "Out Command" do
-  let(:manifest) { instance_double(BoshDeploymentResource::BoshManifest, fallback_director_uuid: nil, use_stemcell: nil, use_release: nil, name: "bosh-deployment", validate_stemcells: nil) }
-  let(:bosh) { instance_double(BoshDeploymentResource::Bosh, upload_stemcell: nil, upload_release: nil, deploy: nil, director_uuid: "some-director-uuid") }
+  let(:manifest) { instance_double(BoshDeploymentResource::BoshManifest, fallback_director_uuid: nil, use_stemcell: nil, use_release: nil, name: "bosh-deployment", validate_stemcells: nil, shasum: "1234") }
+  let(:bosh) { instance_double(BoshDeploymentResource::Bosh, upload_stemcell: nil, upload_release: nil, deploy: nil, director_uuid: "some-director-uuid", target: "bosh-target") }
   let(:response) { StringIO.new }
   let(:command) { BoshDeploymentResource::OutCommand.new(bosh, manifest, response) }
 
@@ -61,7 +61,6 @@ describe "Out Command" do
         "deployment" => "bosh-deployment",
       },
       "params" => {
-        "cert" => "cert/boshCA.pem",
         "manifest" => "manifest/deployment.yml",
         "stemcells" => [
           "stemcells/*.tgz"
@@ -87,14 +86,15 @@ describe "Out Command" do
       end
     end
 
-    it "emits a sha1 checksum of the manifest as the version" do
+    it "emits the version as the manifest_sha1 and target" do
       in_dir do |working_dir|
         add_default_artefacts working_dir
 
         command.run(working_dir, request)
 
         expect(JSON.parse(response.string)["version"]).to eq({
-          "manifest_sha1" => Digest::SHA1.file(written_manifest.path).hexdigest
+          "manifest_sha1" => manifest.shasum,
+          "target" => "bosh-target",
         })
       end
     end
@@ -166,7 +166,7 @@ describe "Out Command" do
         expect(manifest).to receive(:use_stemcell)
         expect(manifest).to receive(:fallback_director_uuid).with("abcdef")
 
-        expect(bosh).to receive(:deploy).with(written_manifest.path)
+        expect(bosh).to receive(:deploy).with(written_manifest.path,false)
 
         command.run(working_dir, request)
       end
@@ -182,6 +182,7 @@ describe "Out Command" do
       end
     end
 
+
     it "runs a bosh cleanup when the cleanup parameter is set to true" do
       request.fetch("params").store("cleanup", true)
 
@@ -190,6 +191,16 @@ describe "Out Command" do
 
         expect(bosh).to receive(:cleanup)
 
+        command.run(working_dir, request)
+      end
+    end
+
+    it "runs a bosh no-redact when the no_redact parameter is set to true" do
+      request.fetch("params").store("no_redact", true)
+
+      in_dir do |working_dir|
+        add_default_artefacts working_dir
+        expect(bosh).to receive(:deploy).with(anything,true)
         command.run(working_dir, request)
       end
     end
@@ -209,7 +220,6 @@ describe "Out Command" do
               "deployment" => "bosh-deployment",
             },
             "params" => {
-              "cert" => "cert/boshCA.pem",
               "manifest" => "deployment.yml",
               "stemcells" => [],
               "releases" => []
@@ -271,7 +281,7 @@ describe "Out Command" do
       end
     end
 
-    it "errors if the cleanup parameter is NOT a boolean value" do
+    it "errors if the cleanup paramater is NOT a boolean value" do
       in_dir do |working_dir|
         expect do
           command.run(working_dir, {
