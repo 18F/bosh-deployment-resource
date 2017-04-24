@@ -3,24 +3,22 @@ require "pty"
 
 module BoshDeploymentResource
   class Bosh
-    def initialize(target, username, password, cert=nil, command_runner=CommandRunner.new)
+    attr_reader :target
+
+    def initialize(target, ca_cert, auth, command_runner=CommandRunner.new)
       @target = target
-      @username = username
-      @password = password
-      @cert = cert
+      @ca_cert = ca_cert
+      @auth = auth
       @command_runner = command_runner
 
-      if cert && File.exist?(cert)
-        # Assumes UAA with SSL cert...
-        run("bosh --ca-cert #{cert} -n target #{target}")
-
-        # TODO: Fix "stty: standard input: Inappropriate ioctl for device" errors
-        run(
-          "echo -n \"$BOSH_USER\n$BOSH_PASSWORD\" | bosh login 1>/dev/null",
-          { 'BOSH_USER' => username, 'BOSH_PASSWORD' => password }
-        )
-      end
+      args = ["-n", "--color", "-t", target]
+      args << ["--ca-cert", @ca_cert.path] if @ca_cert.provided?
+      run(
+        "echo -n \"$BOSH_USER\n$BOSH_PASSWORD\" | bosh #{args.join(" ")} login 1>/dev/null",
+        @auth.env,
+      )
     end
+
 
     def upload_stemcell(path)
       bosh("upload stemcell #{path} --skip-if-exists")
@@ -30,8 +28,16 @@ module BoshDeploymentResource
       bosh("upload release #{path} --skip-if-exists")
     end
 
-    def deploy(manifest_path)
-      bosh("-d #{manifest_path} deploy")
+    def deploy(manifest_path,no_redact=false)
+      if no_redact
+          bosh("-d #{manifest_path} deploy --no-redact")
+      else
+          bosh("-d #{manifest_path} deploy")
+      end
+    end
+
+    def download_manifest(deployment_name, manifest_path)
+      bosh("download manifest #{deployment_name} #{manifest_path}")
     end
 
     def cleanup
@@ -49,12 +55,14 @@ module BoshDeploymentResource
 
     private
 
-    attr_reader :target, :username, :password, :command_runner
+    attr_reader :command_runner
 
     def bosh(command, opts={})
+      args = ["-n", "--color", "-t", target]
+      args << ["--ca-cert", @ca_cert.path] if @ca_cert.provided?
       run(
-        "bosh -n --color -t #{target} #{command}",
-        {"BOSH_USER" => username, "BOSH_PASSWORD" => password},
+        "bosh #{args.join(" ")} #{command}",
+        @auth.env,
         opts,
       )
     end

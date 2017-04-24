@@ -35,12 +35,13 @@ end
 
 describe BoshDeploymentResource::Bosh do
   let(:target) { "http://bosh.example.com" }
+  let(:auth) { BoshDeploymentResource::Auth.parse({"username" => username, "password" => password}) }
   let(:username) { "bosh-userΩΩΩΩ" }
   let(:password) { "bosh-password!#%&#(*" }
-  let(:cert) { "cert/boshCA.pem" }
   let(:command_runner) { instance_double(BoshDeploymentResource::CommandRunner) }
 
-  let(:bosh) { BoshDeploymentResource::Bosh.new(target, username, password, cert, command_runner) }
+  let(:bosh) { BoshDeploymentResource::Bosh.new(target, ca_cert, auth, command_runner) }
+  let(:ca_cert) { BoshDeploymentResource::CaCert.new(nil) }
 
   describe ".upload_stemcell" do
     it "runs the command to upload a stemcell" do
@@ -64,7 +65,13 @@ describe BoshDeploymentResource::Bosh do
 
       bosh.deploy("/path/to/a/manifest.yml")
     end
+
+    it "runs the command to deploy with --no-redact" do
+      expect(command_runner).to receive(:run).with(%{bosh -n --color -t #{target} -d /path/to/a/manifest.yml deploy --no-redact}, { "BOSH_USER" => username, "BOSH_PASSWORD" => password}, {})
+      bosh.deploy("/path/to/a/manifest.yml",true)
+    end
   end
+
 
   describe ".director_uuid" do
     it "collects the output of status --uuid" do
@@ -73,6 +80,24 @@ describe BoshDeploymentResource::Bosh do
       end
 
       expect(bosh.director_uuid).to eq("abcdef")
+    end
+  end
+
+  describe ".download_manifest" do
+    it "downloads the manifest" do
+      expect(command_runner).to receive(:run).with(%{bosh -n --color -t #{target} download manifest test_deployment manifest_path}, { "BOSH_USER" => username, "BOSH_PASSWORD" => password }, {})
+      bosh.download_manifest("test_deployment", "manifest_path")
+    end
+  end
+
+  context "when ca_cert_path is provided" do
+    let(:ca_cert) { BoshDeploymentResource::CaCert.new("fake-ca-cert-content") }
+    after { ca_cert.cleanup }
+
+    it "passes ca_cert to bosh cli" do
+      expect(command_runner).to receive(:run).with(%{bosh -n --color -t #{target} --ca-cert #{ca_cert.path} -d /path/to/a/manifest.yml deploy}, anything, anything)
+
+      bosh.deploy("/path/to/a/manifest.yml")
     end
   end
 end

@@ -5,12 +5,20 @@ and then deploy them.
 
 ## Source Configuration
 
+* `deployment`: *Required.* The name of the deployment.
 * `target`: *Optional.* The address of the BOSH director which will be used for
   the deployment. If omitted, `target_file` must be specified via `out`
   parameters, as documented below.
+
+When using BOSH with default authentication:
 * `username`: *Required.* The username for the BOSH director.
 * `password`: *Required.* The password for the BOSH director.
-* `deployment`: *Required.* The name of the deployment.
+
+When using BOSH with [UAA authentication](https://bosh.io/docs/director-users-uaa.html#client-login):
+* `client_id`: *Required.* The UAA client ID for the BOSH director.
+* `client_secret`: *Required.* The UAA client secret for the BOSH director.
+
+* `ca_cert`: *Optional.* CA certificate used to validate SSL connections to Director and UAA.
 
 ### Example
 
@@ -59,11 +67,12 @@ the UUID returned by the targeted director.
   stemcell versions.
 
 * `releases`: *Required.* An array of globs that should point to where the
-  releases used in the deployment can be found.
+  releases used in the deployment can be found. Release entries in the
+  manifest will be updated to the actual provided release versions.
 
 * `cleanup`: *Optional* An boolean that specifies if a bosh cleanup should be
   run before deployment. Defaults to false.
-
+* `no_redact`: *Optional* Removes redacted from Bosh output. Defaults to false.
 * `target_file`: *Optional.* Path to a file containing a BOSH director address.
   This allows the target to be determined at runtime, e.g. by acquiring a BOSH
   lite instance using the [Pool
